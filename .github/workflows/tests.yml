@@ -5,23 +5,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  pytest:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-
-      - name: Install genlayer-test
-        run: pip install genlayer-test
-
-      - name: Pre-cache GenVM runtime artifact (upstream release/loader filename mismatch workaround)
-        run: |
-          mkdir -p ~/.cache/gltest-direct
-          curl -fLsS -o ~/.cache/gltest-direct/genvm-universal-v0.3.0-rc7.tar.xz \
-            https://github.com/genlayerlabs/genvm/releases/download/v0.3.0-rc7/genvm-runners-all.tar.xz
+          python-version: "3.11"
 
       - name: Run offline test suite
-        run: pytest tests/ -v
+        run: python3 -m unittest discover -s tests -p "test_*.py" -v
