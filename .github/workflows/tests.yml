@@ -17,5 +17,11 @@ jobs:
       - name: Install genlayer-test
         run: pip install genlayer-test
 
+      - name: Pre-cache GenVM runtime artifact (upstream release/loader filename mismatch workaround)
+        run: |
+          mkdir -p ~/.cache/gltest-direct
+          curl -fLsS -o ~/.cache/gltest-direct/genvm-universal-v0.3.0-rc7.tar.xz \
+            https://github.com/genlayerlabs/genvm/releases/download/v0.3.0-rc7/genvm-runners-all.tar.xz
+
       - name: Run offline test suite
         run: pytest tests/ -v
