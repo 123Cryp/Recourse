@@ -1,0 +1,21 @@
+name: Offline tests
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install genlayer-test
+        run: pip install genlayer-test
+
+      - name: Run offline test suite
+        run: pytest tests/ -v
