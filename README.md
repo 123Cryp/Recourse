@@ -60,6 +60,8 @@ contracts/
   claim_tribunal.py
   escalation_board.py
 tests/
+  genlayer_stub/genlayer/__init__.py  (offline SDK stub, test-only)
+  _bootstrap.py                        (loads contracts against the stub)
   test_offline.py
 DESIGN_DECISIONS.md
 LESSONS_LEARNED.md
@@ -69,13 +71,16 @@ README.md
 ## Testing
 
 ```bash
-pip install genlayer-test
-pytest tests/ -v
+python3 -m unittest discover -s tests -p "test_*.py" -v
 ```
 
-The offline suite includes the core property test: two byte-identical
-claims against a clean-history vendor and a high-reject-history vendor
-must resolve through different equivalence-principle branches.
+No install step needed -- the suite runs against a small offline
+`genlayer` SDK stub committed under `tests/genlayer_stub/` (not
+`genlayer-test`'s Direct Mode, which hit unresolved SDK-internal bugs
+with this project's multi-contract wiring; see `LESSONS_LEARNED.md`).
+It covers the core property: two byte-identical claims against a
+clean-history vendor and a high-reject-history vendor must resolve
+through different equivalence-principle branches.
 
 ## Deployment
 

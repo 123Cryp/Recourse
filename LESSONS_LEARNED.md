@@ -116,7 +116,54 @@ Recourse's three equivalent entry points
 draft, per `DESIGN_DECISIONS.md` section 5, and the live test in section 2
 above confirms the unauthorized-call rejection works exactly as designed.
 
-## 6. Final deployed addresses (Studio, Sep 25 2026)
+## 6. `genlayer-test` 0.29.2 Direct Mode: abandoned in favor of a custom offline stub
+
+Initial offline testing used `genlayer-test`'s Direct Mode (`pytest` +
+`direct_deploy`/`direct_vm` fixtures). Several real, environment-level
+issues were hit in sequence, none caused by Recourse's contract code:
+
+- `genlayer_py` requires `collections.abc.Buffer`, Python 3.12+ only --
+  CI must not use 3.11.
+- The GenVM runtime artifact `genlayer-test` 0.29.2 tries to download
+  (`genvm-universal.tar.xz` from release `v0.3.0-rc7`) doesn't exist
+  under that name in the actual GitHub release (which ships
+  `genvm-runners-all.tar.xz` instead) -- a 404 unless pre-cached
+  manually under the expected filename.
+- A module-level singleton (`genlayer.gl.genvm_contracts.__known_contract__`)
+  meant to catch two `gl.Contract` subclasses in one file also fires
+  across separate `direct_deploy(...)` calls for *different* contract
+  files in one test -- blocking any multi-contract test -- worked
+  around by resetting it before each deploy in a custom `conftest.py`.
+- After that fix, a deeper, unresolved bug remained: a freshly deployed
+  contract's own `set_*`-once method (e.g. `EscalationBoard.set_claim_tribunal`)
+  reported "already set" on its very first call, within the *first*
+  test in the file to ever wire up the three contracts together -- ruling
+  out cross-test state leakage. No further diagnosis was possible
+  without the SDK's own source (not accessible in this environment), and
+  `genlayer-test` has open GitHub issues describing other regressions
+  around this same version boundary.
+
+Given the exact same access-control logic (§2 above) was already
+independently live-verified correct on real GenVM via Studio, further
+chasing this Direct Mode bug wasn't a good use of time. The offline
+suite was rewritten against a small, self-written `genlayer` SDK stub
+(`tests/genlayer_stub/`, following the pattern already used successfully
+on several earlier projects, e.g. TrueStake) instead, extended to
+support `gl.get_contract_at(...).view()/.emit()` via a simple address
+registry and a call stack that tracks which contract is "currently
+executing" so `.emit()` can correctly report the calling contract's own
+address as `gl.message.sender_address` inside the callee -- reproducing
+the one real cross-contract behavior (§5 above / rule confirmed on
+Tribunal) that actually matters for these tests, without depending on
+`genlayer-test`'s Direct Mode internals at all. Writing this stub itself
+surfaced one bug worth noting for future stubs: the `.emit()` sender
+override must assign to the `gl.message` *instance* attribute, not the
+`_Message` *class* attribute -- once `set_caller()` has been called once,
+it shadows the class attribute with an instance attribute, so writing to
+the class afterwards silently has no effect on what code actually reads.
+All 19 tests pass with this stub, no install step required.
+
+## 7. Final deployed addresses (Studio, Sep 25 2026)
 
 - `VendorLedger`: `0xdD40216620a4B3c067860488b33F53e3aa8601B4`
 - `ClaimTribunal`: `0x92b555764A2b6e356c1446E0239394C78DFEAc3b`
