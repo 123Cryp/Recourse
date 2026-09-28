@@ -26,6 +26,11 @@ RISK_HIGH = "HIGH"
 LOW_RISK_MAX_BPS = 2000
 HIGH_RISK_MIN_BPS = 5000
 
+STATUS_APPROVED = "A"
+STATUS_REJECTED = "R"
+STATUS_OVERTURNED = "O"
+STATUS_PENDING_OVERTURN = "P"
+
 
 def _risk_category(approved: int, rejected: int) -> str:
     total = approved + rejected
@@ -47,6 +52,7 @@ class VendorLedger(gl.Contract):
     escalation_board_set: bool
     approved_counts: TreeMap[str, u256]
     rejected_counts: TreeMap[str, u256]
+    claim_status: TreeMap[str, str]
 
     def __init__(self):
         self.owner = gl.message.sender_address
@@ -73,22 +79,48 @@ class VendorLedger(gl.Contract):
         self.escalation_board = _normalize_address(escalation_board_address)
         self.escalation_board_set = True
 
+    def _bump(self, counts: TreeMap[str, u256], key: str, delta: int) -> None:
+        counts[key] = u256(int(counts.get(key, u256(0))) + delta)
+
     @gl.public.write
-    def record_outcome(self, vendor, approved: bool) -> None:
-        sender = gl.message.sender_address
-        is_tribunal = self.claim_tribunal_set and sender == self.claim_tribunal
-        is_board = self.escalation_board_set and sender == self.escalation_board
-        if not is_tribunal and not is_board:
-            raise gl.vm.UserError(
-                "only the configured claim tribunal or escalation board can record an outcome"
-            )
+    def record_outcome(self, vendor, approved: bool, claim_id: u256) -> None:
+        if not self.claim_tribunal_set or gl.message.sender_address != self.claim_tribunal:
+            raise gl.vm.UserError("only the configured claim tribunal can record an outcome")
         key = str(_normalize_address(vendor))
-        current_approved = self.approved_counts.get(key, u256(0))
-        current_rejected = self.rejected_counts.get(key, u256(0))
+        ckey = str(int(claim_id))
+        status = self.claim_status.get(ckey, "")
+        if status == STATUS_PENDING_OVERTURN:
+            # The overturn for this exact claim arrived first.
+            self.claim_status[ckey] = STATUS_OVERTURNED
+            self._bump(self.approved_counts, key, 1)
+            return
+        if status != "":
+            raise gl.vm.UserError("outcome already recorded for this claim")
+        self.claim_status[ckey] = STATUS_APPROVED if approved else STATUS_REJECTED
         if approved:
-            self.approved_counts[key] = current_approved + u256(1)
+            self._bump(self.approved_counts, key, 1)
         else:
-            self.rejected_counts[key] = current_rejected + u256(1)
+            self._bump(self.rejected_counts, key, 1)
+
+    @gl.public.write
+    def record_overturn(self, vendor, claim_id: u256) -> None:
+        if not self.escalation_board_set or gl.message.sender_address != self.escalation_board:
+            raise gl.vm.UserError("only the configured escalation board can record an overturn")
+        key = str(_normalize_address(vendor))
+        ckey = str(int(claim_id))
+        status = self.claim_status.get(ckey, "")
+        if status == STATUS_REJECTED:
+            self.claim_status[ckey] = STATUS_OVERTURNED
+            self._bump(self.rejected_counts, key, -1)
+            self._bump(self.approved_counts, key, 1)
+        elif status == "":
+            self.claim_status[ckey] = STATUS_PENDING_OVERTURN
+        else:
+            raise gl.vm.UserError("claim cannot be overturned from its current status")
+
+    @gl.public.view
+    def get_claim_status(self, claim_id: u256) -> str:
+        return self.claim_status.get(str(int(claim_id)), "")
 
     @gl.public.view
     def get_vendor_risk(self, vendor) -> str:
