@@ -96,10 +96,35 @@ class UserError(Exception):
     """Stand-in for genlayer.gl.vm.UserError."""
 
 
+class ConsensusFailure(Exception):
+    """Raised by the stub when the validator rejects the leader's result,
+    standing in for a failed consensus round on real GenVM."""
+
+
+class _Return:
+    """Stand-in for gl.vm.Return: a successful leader result."""
+
+    def __init__(self, calldata):
+        self.calldata = calldata
+
+
+def _run_nondet_unsafe(leader_fn, validator_fn):
+    """Runs the leader once, then the validator once against that result
+    (the validator typically re-runs the leader function itself). Unlike
+    real GenVM there is one validator and no rotation: a False vote raises
+    ConsensusFailure."""
+    result = leader_fn()
+    if not validator_fn(_Return(result)):
+        raise ConsensusFailure("validator rejected the leader result")
+    return result
+
+
 class _Vm:
-    """Stand-in for `gl.vm` - exposes UserError at its real SDK path."""
+    """Stand-in for `gl.vm`."""
 
     UserError = UserError
+    Return = _Return
+    run_nondet_unsafe = staticmethod(_run_nondet_unsafe)
 
 
 # Call stack of contract instances currently executing a
@@ -159,11 +184,13 @@ class _Nondet:
 
 class _EqPrinciple:
     """
-    Stand-in for `gl.eq_principle`. For offline unit tests this simply
-    runs `fn` once and returns its result -- simulating independent
-    leader/validator re-execution and the real NLP comparator requires
-    the live GenLayer Studio/testnet (already done for Recourse; see
-    LESSONS_LEARNED.md).
+    Stand-in for `gl.eq_principle`. strict_eq and prompt_comparative
+    run `fn` once and return its result; prompt_non_comparative runs `fn`
+    to get the input text and then performs the task on it via the
+    (mockable) exec_prompt, as the real SDK does. Independent
+    leader/validator re-execution, the NLP comparator, and the validators'
+    criteria check are NOT simulated -- those were verified live on
+    GenLayer Studio (see LESSONS_LEARNED.md).
     """
 
     @staticmethod
@@ -176,7 +203,10 @@ class _EqPrinciple:
 
     @staticmethod
     def prompt_non_comparative(fn, task="", criteria=""):
-        return fn()
+        # Matches the real SDK: `fn` only supplies the INPUT text; an LLM
+        # then performs `task` on that input (mocked here via exec_prompt).
+        # Validators' criteria check is not simulated offline.
+        return gl.nondet.exec_prompt(task + "\n\n" + fn())
 
 
 class _Message:
