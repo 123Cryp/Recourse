@@ -16,3 +16,6 @@ jobs:
 
       - name: Run offline test suite
         run: python3 -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run invariant fuzzing
+        run: python3 tests/fuzz_invariants.py
