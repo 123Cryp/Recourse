@@ -5,6 +5,7 @@ used across this project's test files (adapted from prior single-
 contract projects to handle Recourse's three cross-calling contracts).
 """
 import importlib.util
+import itertools
 import os
 import sys
 
@@ -48,6 +49,22 @@ STRANGER_ADDRESS = "0x" + "33" * 20
 CLEAN_VENDOR_ADDRESS = "0x" + "44" * 20
 BAD_VENDOR_ADDRESS = "0x" + "55" * 20
 
+# Every vendor address the suite files claims against; wire_up() approves
+# EVIDENCE_SOURCE as an evidence source for each of them.
+TEST_VENDORS = [CLEAN_VENDOR_ADDRESS, BAD_VENDOR_ADDRESS] + [
+    "0x" + h * 20 for h in ("66", "77", "78", "79", "7a", "7b", "7c", "7d")
+]
+EVIDENCE_SOURCE = "https://example.test/policies/"
+EVIDENCE_URL = "https://example.test/policies/warranty"
+
+_synthetic_claim_ids = itertools.count(10 ** 6)
+
+
+def next_claim_id():
+    """Unique claim ids for tests that write to the ledger directly."""
+    return next(_synthetic_claim_ids)
+
+
 VENDOR_LEDGER_ADDR = "0x" + "01" * 20
 CLAIM_TRIBUNAL_ADDR = "0x" + "02" * 20
 ESCALATION_BOARD_ADDR = "0x" + "03" * 20
@@ -70,7 +87,7 @@ def deploy(cls, address_str, *args, sender=DEPLOYER_ADDRESS):
 def wire_up():
     """Deploy and fully wire VendorLedger + ClaimTribunal +
     EscalationBoard, mirroring the 7-step sequence documented in
-    DESIGN_DECISIONS.md section 5."""
+    DESIGN_DECISIONS.md section 5, plus approving the test evidence source for each test vendor."""
     ledger = deploy(VendorLedger, VENDOR_LEDGER_ADDR)
     tribunal = deploy(ClaimTribunal, CLAIM_TRIBUNAL_ADDR, Address(VENDOR_LEDGER_ADDR))
     board = deploy(EscalationBoard, ESCALATION_BOARD_ADDR, Address(VENDOR_LEDGER_ADDR))
@@ -80,5 +97,7 @@ def wire_up():
     board.set_claim_tribunal(Address(CLAIM_TRIBUNAL_ADDR))
     ledger.set_claim_tribunal(Address(CLAIM_TRIBUNAL_ADDR))
     ledger.set_escalation_board(Address(ESCALATION_BOARD_ADDR))
+    for vendor in TEST_VENDORS:
+        tribunal.add_vendor_source(Address(vendor), EVIDENCE_SOURCE)
 
     return ledger, tribunal, board
